@@ -1,0 +1,17 @@
+name: Guard main
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  only-from-dev:
+    name: only-from-dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allow only dev to main
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "::error::Only PRs from 'dev' to 'main' are allowed (got: '${{ github.head_ref }}')"
+            exit 1
+          fi
