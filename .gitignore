@@ -16,3 +16,14 @@ pipelines/*
 !pipelines/.gitkeep
 
 .DS_Store
+.env
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfvars
+
+.databricks
+
+data/*

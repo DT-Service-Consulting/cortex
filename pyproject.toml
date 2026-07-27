@@ -5,11 +5,25 @@ description = "Cortex ML / data project"
 authors = [
     {name = "melihtaki"}
 ]
-requires-python = ">=3.9,<4.0"
-dependencies = []
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "azure-storage-file-datalake (>=12.25.0,<13.0.0)",
+    "azure-identity (>=1.25.3,<2.0.0)",
+    "pandas (>=3.0.5,<4.0.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "plotly (>=6.9.0,<7.0.0)",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel (>=7.3.0,<8.0.0)",
+    "pyspark (>=4.0.0,<5.0.0)",
+]
 
 [tool.poetry]
-package-mode = false
+packages = [
+    { include = "misc" },
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
