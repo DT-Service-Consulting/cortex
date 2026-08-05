@@ -5,19 +5,29 @@ description = "Cortex ML / data project"
 authors = [
     {name = "melihtaki"}
 ]
-requires-python = ">=3.12,<4.0"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "azure-storage-file-datalake (>=12.25.0,<13.0.0)",
     "azure-identity (>=1.25.3,<2.0.0)",
-    "pandas (>=3.0.5,<4.0.0)",
+    "pandas (>=2.2,<3.0)",
     "dotenv (>=0.9.9,<0.10.0)",
     "plotly (>=6.9.0,<7.0.0)",
+    "deltalake (>=1.0,<2.0)",
+    "pyarrow (>=21.0,<22.0)",
+    "duckdb (>=1.5,<2.0)",
+    "setuptools (>=75,<81)",
+    "fg-data-profiling (>=4.19.1,<5.0.0)",
+    "polars (>=1.43.2,<2.0.0)",
+    "sqlalchemy (>=2.0.51,<3.0.0)",
+    "pyodbc (>=5.3.0,<6.0.0)",
+    "pyspark (>=4.0,<5.0)",
+    "delta-spark (>=4.3.1,<5.0.0)",
+    "folium (>=0.20.0,<0.21.0)"
 ]
 
 [dependency-groups]
 dev = [
     "ipykernel (>=7.3.0,<8.0.0)",
-    "pyspark (>=4.0.0,<5.0.0)",
 ]
 
 [tool.poetry]
