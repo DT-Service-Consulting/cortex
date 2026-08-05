@@ -56,3 +56,40 @@ def get_column_memory_sizes(df: DataFrame):
     fig.show()
 
     return size_df
+
+def show_distincts(df: DataFrame, col: str) -> int:
+    distincts = df.select(col).distinct()
+    distincts.show(5, truncate=False)
+    print(f"Number of distincts for {col}: {distincts.count()}")
+    return distincts.collect()
+
+def gtfs_time_to_seconds(time_col):
+    parts = F.split(time_col, ":")
+    return (
+        parts.getItem(0).cast("int") * 3600
+        + parts.getItem(1).cast("int") * 60
+        + parts.getItem(2).cast("int")
+    )
+
+
+def with_gtfs_event_time(
+    df: DataFrame,
+    event: str,
+    service_date_col: str = "service_date",
+    local_timezone: str = "Europe/Brussels",
+) -> DataFrame:
+    """
+    Expand a GTFS ``<event>_time`` column into seconds, day offset and timestamps.
+
+    GTFS times are local wall clock times relative to the service date and may
+    exceed 24:00:00, so they are added as an offset instead of being parsed.
+    Requires spark.sql.session.timeZone = UTC to stay DST-safe.
+    """
+    seconds = gtfs_time_to_seconds(F.col(f"{event}_time"))
+    local_at = F.timestamp_seconds(F.unix_timestamp(F.col(service_date_col)) + seconds)
+    return (
+        df.withColumn(f"{event}_time_seconds", seconds)
+        .withColumn(f"{event}_day_offset", (seconds / 86400).cast("int"))
+        .withColumn(f"{event}_at_local", local_at)
+        .withColumn(f"{event}_at_utc", F.to_utc_timestamp(local_at, local_timezone))
+    )
