@@ -33,6 +33,7 @@ dev = [
 [tool.poetry]
 packages = [
     { include = "misc" },
+    { include = "core" },
 ]
 
 [build-system]

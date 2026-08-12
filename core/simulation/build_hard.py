@@ -7,10 +7,12 @@ from pathlib import Path
 import pandas as pd
 
 from .ConstrainedRouter import ConstrainedRouter
+from .GeoUtils import GeoUtils
 
 T0 = 7 * 3600 + 55 * 60
 SPEED = 22.0
 INF = 10**12
+STOP_HALF = 90.0
 
 STATIONS = {
     215: "BRUXELLES-CENTRAL",
@@ -84,11 +86,32 @@ def build_scenario(
         plat_pos = {(int(r.Station_ID), int(r.sncb_platform)): float(r.position_along_track_m)
                     for _, r in assigned.iterrows()}
     else:
-        plat_pos = {
-            (sid, plat): tid_info[tid]["length"] / 2.0
-            for (sid, plat), tid in plat_track.items()
-            if tid in tid_info
-        }
+        station_mids: dict[int, list[list[float]]] = {}
+        for (sid, _), tid in plat_track.items():
+            if tid not in tid_info:
+                continue
+            info = tid_info[tid]
+            mid = GeoUtils.pointAlongPath(info["path"], info["length"] / 2.0)
+            station_mids.setdefault(sid, []).append(mid)
+
+        station_ref = {}
+        for sid, mids in station_mids.items():
+            lats = sorted(m[0] for m in mids)
+            lons = sorted(m[1] for m in mids)
+            n = len(mids)
+            station_ref[sid] = [lats[n // 2], lons[n // 2]]
+
+        plat_pos = {}
+        for (sid, plat), tid in plat_track.items():
+            if tid not in tid_info or sid not in station_ref:
+                continue
+            info = tid_info[tid]
+            pos = GeoUtils.projectOnPath(info["path"], station_ref[sid])
+            if info["length"] > 2 * STOP_HALF:
+                pos = max(STOP_HALF, min(info["length"] - STOP_HALF, pos))
+            else:
+                pos = info["length"] / 2.0
+            plat_pos[(sid, plat)] = pos
 
     path_cache = {}
 
@@ -263,8 +286,8 @@ def build_scenario(
             s["stop_id"] = f"st{s['sid']}_{s['plat']}_{direction}_{'F' if use_F else 'R'}"
             info = tid_info[s["tid"]]
             p = s["pos"] if use_F else info["length"] - s["pos"]
-            s["start"] = max(0, p - 90)
-            s["end"] = min(info["length"], p + 90)
+            s["start"] = max(0, p - STOP_HALF)
+            s["end"] = min(info["length"], p + STOP_HALF)
             if i == 0:
                 edges.append(s["edge"])
             else:
