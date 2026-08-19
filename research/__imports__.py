@@ -5,6 +5,7 @@ import importlib
 from datetime import datetime as dt
 from pyspark.sql import functions as F
 import ast
+import os
 
 # ENVIRONMENT VARIABLES
 load_dotenv("../.env")
