@@ -14,3 +14,4 @@ research/*
 
 .DS_Store
 .env
+.vscode/
