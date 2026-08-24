@@ -15,10 +15,7 @@
             "server": "sqlcortexsrv.database.windows.net",
             "driver": "MSSQL",
             "database": "sqldb-gold-cortex",
-            "username": "goldcortexmelih",
-            "password": "\"vupwuz-5pIvne-subhyb\"",
-            "name": "sqldb-gold-cortex",
-            "connectString": "Driver={ODBC Driver 18 for SQL Server};Server=tcp:sqlcortexsrv.database.windows.net,1433;Database=sqldb-gold-cortex;Uid=goldcortexmelih;Pwd=vupwuz-5pIvne-subhyb;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+            "name": "sqldb-gold-cortex"
         }
     ]
 }
