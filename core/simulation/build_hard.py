@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -10,9 +11,14 @@ from .ConstrainedRouter import ConstrainedRouter
 from .GeoUtils import GeoUtils
 
 T0 = 7 * 3600 + 55 * 60
-SPEED = 22.0
+SPEED = 50 / 3.6
+PLATFORM_SPEED = 40 / 3.6
+TRAIN_LENGTH = 150.0
+ACCEL = 0.4
+DECEL = 0.8
 INF = 10**12
 STOP_HALF = 90.0
+PASSAGES_FILE = "passages.xml"
 
 STATIONS = {
     215: "BRUXELLES-CENTRAL",
@@ -31,6 +37,16 @@ FALLBACK = {
 }
 
 
+def parse_path(value):
+    """Track geometry, as JSON when possible (~10x faster than literal_eval)."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except ValueError:
+        return ast.literal_eval(value)
+
+
 def hms(t) -> int:
     if hasattr(t, "hour"):
         return int(t.hour) * 3600 + int(t.minute) * 60 + int(getattr(t, "second", 0) or 0)
@@ -47,6 +63,11 @@ def build_scenario(
     timetable: pd.DataFrame,
     out_dir: str | Path,
     t0: int = T0,
+    speed: float = SPEED,
+    platform_speed: float = PLATFORM_SPEED,
+    train_length: float = TRAIN_LENGTH,
+    accel: float = ACCEL,
+    decel: float = DECEL,
 ) -> dict:
     """Hard-route timetable trains and write SUMO XML files into out_dir.
 
@@ -63,13 +84,15 @@ def build_scenario(
 
     pair_to_tid = {}
     tid_info = {}
-    for _, r in tracks.iterrows():
-        tid = int(r["ID"])
-        dep, arr = int(r["Departure_switch"]), int(r["Arrival_switch"])
-        path = ast.literal_eval(r["Path"]) if isinstance(r["Path"], str) else r["Path"]
+    for tid, dep, arr, length, raw_path in zip(
+        tracks["ID"], tracks["Departure_switch"], tracks["Arrival_switch"],
+        tracks["Length_m"], tracks["Path"],
+    ):
+        tid, dep, arr = int(tid), int(dep), int(arr)
+        path = parse_path(raw_path)
         pair_to_tid[(dep, arr)] = tid
         tid_info[tid] = {
-            "dep": dep, "arr": arr, "length": float(r["Length_m"]),
+            "dep": dep, "arr": arr, "length": float(length),
             "path": path, "south_F": path[-1][0] < path[0][0],
         }
 
@@ -286,6 +309,8 @@ def build_scenario(
             s["stop_id"] = f"st{s['sid']}_{s['plat']}_{direction}_{'F' if use_F else 'R'}"
             info = tid_info[s["tid"]]
             p = s["pos"] if use_F else info["length"] - s["pos"]
+            s["center"] = p
+            s["det_id"] = f"det{s['sid']}_{s['plat']}_{'F' if use_F else 'R'}"
             s["start"] = max(0, p - STOP_HALF)
             s["end"] = min(info["length"], p + STOP_HALF)
             if i == 0:
@@ -333,9 +358,11 @@ def build_scenario(
     for tid in list(used_tids):
         used_switches.add(tid_info[tid]["dep"])
         used_switches.add(tid_info[tid]["arr"])
-    for _, r in tracks.iterrows():
-        if r["Departure_switch"] in used_switches and r["Arrival_switch"] in used_switches:
-            used_tids.add(int(r["ID"]))
+    for tid, dep, arr in zip(
+        tracks["ID"], tracks["Departure_switch"], tracks["Arrival_switch"]
+    ):
+        if dep in used_switches and arr in used_switches:
+            used_tids.add(int(tid))
     print(f"Tracks apres expansion : {len(used_tids)}")
 
     switches = switches.copy()
@@ -349,6 +376,7 @@ def build_scenario(
 
     sub = tracks[tracks["ID"].isin(used_tids)]
     used_nodes = set(sub["Departure_switch"]) | set(sub["Arrival_switch"])
+    platform_edges = {s["edge"] for _, _, _, _, stops in vehicles for s in stops}
 
     with open(out / "ns.nod.xml", "w") as f:
         f.write("<nodes>\n")
@@ -361,12 +389,14 @@ def build_scenario(
         f.write("<edges>\n")
         for _, r in sub.iterrows():
             tid, dep, arr = int(r["ID"]), int(r["Departure_switch"]), int(r["Arrival_switch"])
-            path = ast.literal_eval(r["Path"]) if isinstance(r["Path"], str) else r["Path"]
+            path = tid_info[tid]["path"]
             shape_f = " ".join(f"{p[1]},{p[0]}" for p in path)
             shape_r = " ".join(f"{p[1]},{p[0]}" for p in reversed(path))
-            common = f'numLanes="1" speed="{SPEED}" allow="rail" spreadType="center"'
-            f.write(f'    <edge id="t{tid}F" from="n{dep}" to="n{arr}" {common} shape="{shape_f}"/>\n')
-            f.write(f'    <edge id="t{tid}R" from="n{arr}" to="n{dep}" {common} shape="{shape_r}"/>\n')
+            spd_f = platform_speed if f"t{tid}F" in platform_edges else speed
+            spd_r = platform_speed if f"t{tid}R" in platform_edges else speed
+            base = 'numLanes="1" allow="rail" spreadType="center"'
+            f.write(f'    <edge id="t{tid}F" from="n{dep}" to="n{arr}" {base} speed="{spd_f:.3f}" shape="{shape_f}"/>\n')
+            f.write(f'    <edge id="t{tid}R" from="n{arr}" to="n{dep}" {base} speed="{spd_r:.3f}" shape="{shape_r}"/>\n')
         f.write("</edges>\n")
 
     incoming, outgoing = {}, {}
@@ -394,22 +424,30 @@ def build_scenario(
 
     stop_lines = ["<additional>"]
     seen_stops = set()
+    seen_dets = set()
     for _, _, _, _, stops_meta in vehicles:
         for s in stops_meta:
-            if s["stop_id"] in seen_stops:
-                continue
-            seen_stops.add(s["stop_id"])
-            stop_lines.append(
-                f'    <trainStop id="{s["stop_id"]}" lane="{s["edge"]}_0" '
-                f'startPos="{s["start"]:.1f}" endPos="{s["end"]:.1f}" friendlyPos="true" '
-                f'name="{STATIONS[s["sid"]]} voie {s["plat"]}"/>')
+            if s["stop_id"] not in seen_stops:
+                seen_stops.add(s["stop_id"])
+                stop_lines.append(
+                    f'    <trainStop id="{s["stop_id"]}" lane="{s["edge"]}_0" '
+                    f'startPos="{s["start"]:.1f}" endPos="{s["end"]:.1f}" friendlyPos="true" '
+                    f'name="{STATIONS[s["sid"]]} voie {s["plat"]}"/>')
+            # Non-stopping calls leave no stopinfo : a detector times them instead.
+            if s["det_id"] not in seen_dets:
+                seen_dets.add(s["det_id"])
+                stop_lines.append(
+                    f'    <instantInductionLoop id="{s["det_id"]}" lane="{s["edge"]}_0" '
+                    f'pos="{s["center"]:.1f}" friendlyPos="true" file="{PASSAGES_FILE}"/>')
     stop_lines.append("</additional>")
     (out / "stops.add.xml").write_text("\n".join(stop_lines))
 
     vehicles.sort()
     lines = [
         "<routes>",
-        '    <vType id="train" vClass="rail" length="40" maxSpeed="33" accel="0.6" decel="0.9"/>',
+        f'    <vType id="train" vClass="rail" carFollowModel="Rail" '
+        f'length="{train_length:.0f}" maxSpeed="{speed:.2f}" '
+        f'accel="{accel}" decel="{decel}"/>',
     ]
     for depart, train_no, direction, edges, stops_meta in vehicles:
         color = "0,0.8,0" if direction == "N2S" else "0.9,0.2,0.2"
@@ -418,13 +456,12 @@ def build_scenario(
             f'    <vehicle id="T{train_no}_{direction}" type="train" depart="{depart}" color="{color}">')
         lines.append(f'        <route edges="{" ".join(edges)}"/>')
         prev_until = depart
-        for i, s in enumerate(stops_meta):
-            if i == len(stops_meta) - 1:
-                lines.append(f'        <stop busStop="{s["stop_id"]}" duration="60"/>')
-            else:
-                until = max(int(s["dep"]), int(s["arr"]) + 20, prev_until + 1, 0)
-                lines.append(f'        <stop busStop="{s["stop_id"]}" until="{until}"/>')
-                prev_until = until
+        for s in stops_meta:
+            if int(s["dep"]) <= int(s["arr"]):
+                continue
+            until = max(int(s["dep"]), prev_until + 1, 0)
+            lines.append(f'        <stop busStop="{s["stop_id"]}" until="{until}"/>')
+            prev_until = until
         lines.append("    </vehicle>")
     lines.append("</routes>")
     (out / "routes.rou.xml").write_text("\n".join(lines))
