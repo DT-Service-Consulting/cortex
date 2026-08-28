@@ -2705,6 +2705,42 @@ files = [
 windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
+name = "pygraphviz"
+version = "2.0.1"
+description = "Python interface to Graphviz"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "pygraphviz-2.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:e9ebfa7e35e2d491007e02c74f01406a16b645431b748c9dbcfb633ff3a1d311"},
+    {file = "pygraphviz-2.0.1-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:efc2788f916855f5afce5653bcc2db00ee056b7a8dd947e69e1a44ae3a6ae074"},
+    {file = "pygraphviz-2.0.1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:009e3e41e776dfcb307868fb0c2513c3d612dbed02bae9df720814d3a81237b9"},
+    {file = "pygraphviz-2.0.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:f618bcd424201814957e02cfdef3e4e1f151f23afc549988d355fdc9e705c599"},
+    {file = "pygraphviz-2.0.1-cp310-cp310-win_amd64.whl", hash = "sha256:6de47a2ec52f7bcc8acc633701772a166fb8128a7a7ca318fef07c0204ea7c14"},
+    {file = "pygraphviz-2.0.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:9cb8eefde7d02eed48012142b8d0d39ff96d79f4e649263894b52012eb8fadd5"},
+    {file = "pygraphviz-2.0.1-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:3a8773b52f71f1d97b186af7975e8a82f4bdc1353e562d6e55b1f729b855a996"},
+    {file = "pygraphviz-2.0.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:c639182f160986a7fdfad9e6946ab97fb90bc0d658cbacd4feada139e4db91e5"},
+    {file = "pygraphviz-2.0.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:db453fccc8d8c0e830dd81e37725a24e31a003e56d21b2af41c4e613b16e820d"},
+    {file = "pygraphviz-2.0.1-cp311-cp311-win_amd64.whl", hash = "sha256:db4ed383701b10c9490131420a5dc9afe2b22e7b40b52795657fca1d7f9a151a"},
+    {file = "pygraphviz-2.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:9df0588e2db8356eeadcec55edb1cd32cc642dd8b0b0ebfe169bf0567e6cd31a"},
+    {file = "pygraphviz-2.0.1-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:a8b6283075874bf4553081180e59e72470b43c59da5fd7530e9bc4f04a648d51"},
+    {file = "pygraphviz-2.0.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:afb25def99ac094e7b733e9913071217ffc0b3d739ee72e2f3b465241ea64224"},
+    {file = "pygraphviz-2.0.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:62c3d76165b283cf70a220de0e22889baee56f8fa3403590840d9eb841f627d2"},
+    {file = "pygraphviz-2.0.1-cp312-cp312-win_amd64.whl", hash = "sha256:55d40e8362e5096b9d02f35007caab3246da4a14b72abaf131281dcac24c3dfa"},
+    {file = "pygraphviz-2.0.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:a393abac0af2f427698f98873b19631abf6311aba8eb90a01764c0904d1c842b"},
+    {file = "pygraphviz-2.0.1-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:76802fe84d687e842371e27ff68a3d8015055cf4f3b141ae635ac05b1f7cccd2"},
+    {file = "pygraphviz-2.0.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:5367adcae805c8adbc4f2f0f0f63ba51810674077ca8acf3255f71ce107287cd"},
+    {file = "pygraphviz-2.0.1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:bca869f7894fe95cc33db210e7420bce67a3535a9329cb258856977a808350d9"},
+    {file = "pygraphviz-2.0.1-cp313-cp313-win_amd64.whl", hash = "sha256:721d9d46c1167d9044a00063374b9e34ebca637dab858b523da38e95188b666e"},
+    {file = "pygraphviz-2.0.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:2969794de5128a5d5d2f9213d92ebdc724c60ffccae683c0b4141d1e4b160d78"},
+    {file = "pygraphviz-2.0.1-cp314-cp314-macosx_11_0_x86_64.whl", hash = "sha256:fad64151a38dfd3eaf3ab01e3e9d193ab4e7c60cc8e7bc00f6a338e00f69a5d9"},
+    {file = "pygraphviz-2.0.1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:19092a42b570e579231d6c897476aed8d24b6c0b5a966d4d50ccb470c9778fe8"},
+    {file = "pygraphviz-2.0.1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:71b13cfacb5ed6e4f5a966bf679e1d383ac70e0274cc74b29ce4b8e7e2709b46"},
+    {file = "pygraphviz-2.0.1-cp314-cp314-win_amd64.whl", hash = "sha256:8f3a37f5abf0873396243634f30f46dcae118a585cbef13554dd3eed0f9c67e0"},
+    {file = "pygraphviz-2.0.1.tar.gz", hash = "sha256:6f9850617f9444517641d2e14dfdb99ae8294cf7657be86c031fee8f7c54f863"},
+]
+
+[[package]]
 name = "pyjwt"
 version = "2.13.0"
 description = "JSON Web Token implementation in Python"
@@ -3457,6 +3493,21 @@ develop = ["colorama", "cython (>=3.0.10)", "cython (>=3.0.10,<4)", "flake8", "i
 docs = ["ipykernel", "jupyter_client", "matplotlib", "nbconvert", "nbformat", "numpydoc", "pandas-datareader", "sphinx"]
 
 [[package]]
+name = "sumolib"
+version = "1.27.1"
+description = "Python helper modules to read networks, parse output data and do other useful stuff related to the traffic simulation Eclipse SUMO"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "sumolib-1.27.1-py2.py3-none-any.whl", hash = "sha256:2cc63e75de8db9219ab1a742a4f8870d1d2199881dcc006a0afbcdbb1e463796"},
+    {file = "sumolib-1.27.1.tar.gz", hash = "sha256:0ceaeeb5c9913d8e38e998263e33702c1ed43829d9f961bb3a591d94fbe87018"},
+]
+
+[package.extras]
+all = ["lxml", "matplotlib", "pyproj", "rtree", "shapely"]
+
+[[package]]
 name = "tornado"
 version = "6.5.7"
 description = "Tornado is a Python web framework and asynchronous networking library, originally developed at FriendFeed."
@@ -3496,6 +3547,21 @@ discord = ["envwrap", "requests"]
 notebook = ["ipywidgets (>=6)"]
 slack = ["envwrap", "slack-sdk"]
 telegram = ["envwrap", "requests"]
+
+[[package]]
+name = "traci"
+version = "1.27.1"
+description = "The pure python version of the TraCI API to communicate with the traffic simulation Eclipse SUMO"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "traci-1.27.1-py2.py3-none-any.whl", hash = "sha256:b4f4fb1cd145461c318aa62df16cfd48494a46631a8c3b62348b901def670c9e"},
+    {file = "traci-1.27.1.tar.gz", hash = "sha256:9f5ccc66e02db316c078a3b010fea1c40510f0cb8434a2155bfe6248e9058787"},
+]
+
+[package.dependencies]
+sumolib = ">=1.27.1"
 
 [[package]]
 name = "traitlets"
@@ -3837,4 +3903,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "92070088941d074938c8e9283db7735414558b564af06f6a8132edcb3c090d99"
+content-hash = "e08541eb0d6af0c9955aebc3fb9681db17ad7e46abf1a0a0892d1f455af3026b"

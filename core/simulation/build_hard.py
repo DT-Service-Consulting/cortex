@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import ast
+import json
+import re
+from collections import defaultdict
 from pathlib import Path
+from statistics import median
+from xml.etree import ElementTree as ET
 
 import pandas as pd
 
@@ -10,9 +15,14 @@ from .ConstrainedRouter import ConstrainedRouter
 from .GeoUtils import GeoUtils
 
 T0 = 7 * 3600 + 55 * 60
-SPEED = 22.0
+SPEED = 50 / 3.6
+PLATFORM_SPEED = 40 / 3.6
+TRAIN_LENGTH = 150.0
+ACCEL = 0.4
+DECEL = 0.8
 INF = 10**12
 STOP_HALF = 90.0
+PASSAGES_FILE = "passages.xml"
 
 STATIONS = {
     215: "BRUXELLES-CENTRAL",
@@ -29,6 +39,116 @@ FALLBACK = {
     (217, "N2S"): 2, (217, "S2N"): 3,
     (220, "N2S"): 12, (220, "S2N"): 13,
 }
+
+PK_KM = {220: 0.000, 217: 1.129, 215: 1.829, 216: 2.729, 221: 3.820}
+
+
+def hop_speeds_from_compare(
+    compare: pd.DataFrame,
+    hop_len_m: dict[tuple[int, int], float] | None = None,
+) -> dict[tuple[int, int], float]:
+    c = compare.sort_values(["trip_id", "seq"])
+    h = c.copy()
+    h["p_st"] = h.groupby("trip_id").station_id.shift()
+    h["p_dep"] = h.groupby("trip_id").plan_dep_s.shift()
+    h = h.dropna(subset=["p_st"])
+    h["frm"] = h.p_st.astype(int)
+    h["to"] = h.station_id.astype(int)
+    h["dt"] = h.plan_arr_s - h.p_dep
+    h = h[h.dt > 0]
+    if hop_len_m:
+        h["m"] = [hop_len_m.get((int(a), int(b)), float("nan")) for a, b in zip(h.frm, h.to)]
+        h = h[h.m.notna() & (h.m > 1)]
+        h["kmh"] = 3.6 * h.m / h.dt
+    else:
+        h["km"] = (h["frm"].map(PK_KM) - h["to"].map(PK_KM)).abs()
+        h = h[h.km > 0]
+        h["kmh"] = 3600.0 * h.km / h.dt
+    out: dict[tuple[int, int], float] = {}
+    for (a, b), g in h.groupby(["frm", "to"]):
+        q1, q3 = g.kmh.quantile([0.25, 0.75])
+        iqr = q3 - q1
+        inn = g[(g.kmh >= q1 - 1.5 * iqr) & (g.kmh <= q3 + 1.5 * iqr)]
+        if not len(inn):
+            inn = g
+        out[(int(a), int(b))] = float(inn.kmh.mean() / 3.6)
+    return out
+
+
+def hop_lengths_from_day(day_dir: str | Path, compare: pd.DataFrame | None = None) -> dict[tuple[int, int], float]:
+    day = Path(day_dir)
+    el: dict[str, float] = {}
+    with open(day / "ns.net.xml") as f:
+        for line in f:
+            m = re.search(r'<lane id="(t\d+[FR])_0"[^>]*length="([0-9.]+)"', line)
+            if m:
+                el[m.group(1)] = float(m.group(2))
+    stops: dict[tuple, tuple[str, float]] = {}
+    for _, s in ET.iterparse(day / "stops.add.xml", events=("end",)):
+        if s.tag != "trainStop":
+            continue
+        parts = s.get("id").split("_")
+        st, plat, direction = int(parts[0][2:]), int(parts[1]), parts[2]
+        edge = s.get("lane").rsplit("_", 1)[0]
+        pos = 0.5 * (float(s.get("startPos")) + float(s.get("endPos")))
+        stops[(st, plat, direction)] = (edge, pos)
+        s.clear()
+    vehs: dict[str, list[str]] = {}
+    for _, v in ET.iterparse(day / "routes.rou.xml", events=("end",)):
+        if v.tag != "vehicle":
+            continue
+        vid = v.get("id")
+        for ch in v:
+            if ch.tag == "route":
+                vehs[vid] = ch.get("edges").split()
+        v.clear()
+    if compare is None:
+        compare = pd.read_csv(day / "compare.csv", dtype={"train_no": str})
+    compare = compare.sort_values(["trip_id", "seq"])
+
+    def dist_along(edges, e0, p0, e1, p1):
+        try:
+            i0 = edges.index(e0)
+            i1 = edges.index(e1, i0)
+        except ValueError:
+            return None
+        if i0 == i1:
+            return abs(p1 - p0)
+        d = el.get(e0, 0) - p0
+        for e in edges[i0 + 1:i1]:
+            d += el.get(e, 0)
+        d += p1
+        return d
+
+    acc: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for _, g in compare.groupby("trip_id"):
+        g = g.sort_values("seq")
+        tn, direction = str(g.iloc[0].train_no), g.iloc[0].direction
+        edges = vehs.get(f"T{tn}_{direction}")
+        if not edges:
+            continue
+        prev = None
+        for _, r in g.iterrows():
+            info = stops.get((int(r.station_id), int(r.platform), r.direction))
+            if info is None:
+                prev = None
+                continue
+            if prev is not None:
+                d = dist_along(edges, prev[0], prev[1], info[0], info[1])
+                if d is not None and d > 1:
+                    acc[(prev[2], int(r.station_id))].append(d)
+            prev = (info[0], info[1], int(r.station_id))
+    return {k: float(median(v)) for k, v in acc.items() if v}
+
+
+def parse_path(value):
+    """Track geometry, as JSON when possible (~10x faster than literal_eval)."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except ValueError:
+        return ast.literal_eval(value)
 
 
 def hms(t) -> int:
@@ -47,6 +167,12 @@ def build_scenario(
     timetable: pd.DataFrame,
     out_dir: str | Path,
     t0: int = T0,
+    speed: float = SPEED,
+    platform_speed: float = PLATFORM_SPEED,
+    train_length: float = TRAIN_LENGTH,
+    accel: float = ACCEL,
+    decel: float = DECEL,
+    hop_speeds: dict[tuple[int, int], float] | None = None,
 ) -> dict:
     """Hard-route timetable trains and write SUMO XML files into out_dir.
 
@@ -63,13 +189,15 @@ def build_scenario(
 
     pair_to_tid = {}
     tid_info = {}
-    for _, r in tracks.iterrows():
-        tid = int(r["ID"])
-        dep, arr = int(r["Departure_switch"]), int(r["Arrival_switch"])
-        path = ast.literal_eval(r["Path"]) if isinstance(r["Path"], str) else r["Path"]
+    for tid, dep, arr, length, raw_path in zip(
+        tracks["ID"], tracks["Departure_switch"], tracks["Arrival_switch"],
+        tracks["Length_m"], tracks["Path"],
+    ):
+        tid, dep, arr = int(tid), int(dep), int(arr)
+        path = parse_path(raw_path)
         pair_to_tid[(dep, arr)] = tid
         tid_info[tid] = {
-            "dep": dep, "arr": arr, "length": float(r["Length_m"]),
+            "dep": dep, "arr": arr, "length": float(length),
             "path": path, "south_F": path[-1][0] < path[0][0],
         }
 
@@ -286,6 +414,8 @@ def build_scenario(
             s["stop_id"] = f"st{s['sid']}_{s['plat']}_{direction}_{'F' if use_F else 'R'}"
             info = tid_info[s["tid"]]
             p = s["pos"] if use_F else info["length"] - s["pos"]
+            s["center"] = p
+            s["det_id"] = f"det{s['sid']}_{s['plat']}_{'F' if use_F else 'R'}"
             s["start"] = max(0, p - STOP_HALF)
             s["end"] = min(info["length"], p + STOP_HALF)
             if i == 0:
@@ -323,7 +453,7 @@ def build_scenario(
         if not ok_stops:
             failed.append(train_no)
             continue
-        depart = max(0, stops_meta[0]["arr"] - 60)
+        depart = max(0, stops_meta[0]["arr"])
         vehicles.append((depart, train_no, direction, edges, stops_meta))
 
     print(f"Trains hard-routes : {len(vehicles)} (echec: {len(failed)}) {failed[:20]}")
@@ -333,9 +463,11 @@ def build_scenario(
     for tid in list(used_tids):
         used_switches.add(tid_info[tid]["dep"])
         used_switches.add(tid_info[tid]["arr"])
-    for _, r in tracks.iterrows():
-        if r["Departure_switch"] in used_switches and r["Arrival_switch"] in used_switches:
-            used_tids.add(int(r["ID"]))
+    for tid, dep, arr in zip(
+        tracks["ID"], tracks["Departure_switch"], tracks["Arrival_switch"]
+    ):
+        if dep in used_switches and arr in used_switches:
+            used_tids.add(int(tid))
     print(f"Tracks apres expansion : {len(used_tids)}")
 
     switches = switches.copy()
@@ -349,6 +481,24 @@ def build_scenario(
 
     sub = tracks[tracks["ID"].isin(used_tids)]
     used_nodes = set(sub["Departure_switch"]) | set(sub["Arrival_switch"])
+    platform_edges = {s["edge"] for _, _, _, _, stops in vehicles for s in stops}
+
+    edge_speed: dict[str, float] = {}
+    if hop_speeds:
+        votes: dict[str, list[float]] = defaultdict(list)
+        for _, _, _, edges, stops_meta in vehicles:
+            for a, b in zip(stops_meta, stops_meta[1:]):
+                spd = hop_speeds.get((a["sid"], b["sid"]))
+                if spd is None:
+                    continue
+                try:
+                    i0 = edges.index(a["edge"])
+                    i1 = edges.index(b["edge"], i0)
+                except ValueError:
+                    continue
+                for e in edges[i0:i1 + 1]:
+                    votes[e].append(spd)
+        edge_speed = {e: float(median(v)) for e, v in votes.items()}
 
     with open(out / "ns.nod.xml", "w") as f:
         f.write("<nodes>\n")
@@ -361,12 +511,15 @@ def build_scenario(
         f.write("<edges>\n")
         for _, r in sub.iterrows():
             tid, dep, arr = int(r["ID"]), int(r["Departure_switch"]), int(r["Arrival_switch"])
-            path = ast.literal_eval(r["Path"]) if isinstance(r["Path"], str) else r["Path"]
+            path = tid_info[tid]["path"]
             shape_f = " ".join(f"{p[1]},{p[0]}" for p in path)
             shape_r = " ".join(f"{p[1]},{p[0]}" for p in reversed(path))
-            common = f'numLanes="1" speed="{SPEED}" allow="rail" spreadType="center"'
-            f.write(f'    <edge id="t{tid}F" from="n{dep}" to="n{arr}" {common} shape="{shape_f}"/>\n')
-            f.write(f'    <edge id="t{tid}R" from="n{arr}" to="n{dep}" {common} shape="{shape_r}"/>\n')
+            eid_f, eid_r = f"t{tid}F", f"t{tid}R"
+            spd_f = edge_speed.get(eid_f, platform_speed if eid_f in platform_edges else speed)
+            spd_r = edge_speed.get(eid_r, platform_speed if eid_r in platform_edges else speed)
+            base = 'numLanes="1" allow="rail" spreadType="center"'
+            f.write(f'    <edge id="t{tid}F" from="n{dep}" to="n{arr}" {base} speed="{spd_f:.3f}" shape="{shape_f}"/>\n')
+            f.write(f'    <edge id="t{tid}R" from="n{arr}" to="n{dep}" {base} speed="{spd_r:.3f}" shape="{shape_r}"/>\n')
         f.write("</edges>\n")
 
     incoming, outgoing = {}, {}
@@ -394,37 +547,47 @@ def build_scenario(
 
     stop_lines = ["<additional>"]
     seen_stops = set()
+    seen_dets = set()
     for _, _, _, _, stops_meta in vehicles:
         for s in stops_meta:
-            if s["stop_id"] in seen_stops:
-                continue
-            seen_stops.add(s["stop_id"])
-            stop_lines.append(
-                f'    <trainStop id="{s["stop_id"]}" lane="{s["edge"]}_0" '
-                f'startPos="{s["start"]:.1f}" endPos="{s["end"]:.1f}" friendlyPos="true" '
-                f'name="{STATIONS[s["sid"]]} voie {s["plat"]}"/>')
+            if s["stop_id"] not in seen_stops:
+                seen_stops.add(s["stop_id"])
+                stop_lines.append(
+                    f'    <trainStop id="{s["stop_id"]}" lane="{s["edge"]}_0" '
+                    f'startPos="{s["start"]:.1f}" endPos="{s["end"]:.1f}" friendlyPos="true" '
+                    f'name="{STATIONS[s["sid"]]} voie {s["plat"]}"/>')
+            # Non-stopping calls leave no stopinfo : a detector times them instead.
+            if s["det_id"] not in seen_dets:
+                seen_dets.add(s["det_id"])
+                stop_lines.append(
+                    f'    <instantInductionLoop id="{s["det_id"]}" lane="{s["edge"]}_0" '
+                    f'pos="{s["center"]:.1f}" friendlyPos="true" file="{PASSAGES_FILE}"/>')
     stop_lines.append("</additional>")
     (out / "stops.add.xml").write_text("\n".join(stop_lines))
 
     vehicles.sort()
     lines = [
         "<routes>",
-        '    <vType id="train" vClass="rail" length="40" maxSpeed="33" accel="0.6" decel="0.9"/>',
+        f'    <vType id="train" vClass="rail" carFollowModel="Rail" '
+        f'length="{train_length:.0f}" maxSpeed="{speed:.2f}" '
+        f'accel="{accel}" decel="{decel}"/>',
     ]
     for depart, train_no, direction, edges, stops_meta in vehicles:
         color = "0,0.8,0" if direction == "N2S" else "0.9,0.2,0.2"
         depart = max(0, int(depart))
+        first = stops_meta[0]
+        dspd = "0" if int(first["dep"]) > int(first["arr"]) else "max"
         lines.append(
-            f'    <vehicle id="T{train_no}_{direction}" type="train" depart="{depart}" color="{color}">')
+            f'    <vehicle id="T{train_no}_{direction}" type="train" depart="{depart}" '
+            f'departPos="{first["center"]:.1f}" departSpeed="{dspd}" color="{color}">')
         lines.append(f'        <route edges="{" ".join(edges)}"/>')
         prev_until = depart
-        for i, s in enumerate(stops_meta):
-            if i == len(stops_meta) - 1:
-                lines.append(f'        <stop busStop="{s["stop_id"]}" duration="60"/>')
-            else:
-                until = max(int(s["dep"]), int(s["arr"]) + 20, prev_until + 1, 0)
-                lines.append(f'        <stop busStop="{s["stop_id"]}" until="{until}"/>')
-                prev_until = until
+        for s in stops_meta:
+            if int(s["dep"]) <= int(s["arr"]):
+                continue
+            until = max(int(s["dep"]), prev_until + 1, 0)
+            lines.append(f'        <stop busStop="{s["stop_id"]}" until="{until}"/>')
+            prev_until = until
         lines.append("    </vehicle>")
     lines.append("</routes>")
     (out / "routes.rou.xml").write_text("\n".join(lines))

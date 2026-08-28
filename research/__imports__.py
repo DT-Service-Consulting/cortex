@@ -1,6 +1,7 @@
 # GLOBAL IMPORTS
 from dotenv import load_dotenv
 import pandas as pd
+import polars as pl
 import importlib
 from datetime import datetime as dt
 from pyspark.sql import functions as F
