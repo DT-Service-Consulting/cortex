@@ -247,6 +247,7 @@ def run_day(
     speed: float = SPEED,
     clock: str = "planned",
     skip_done: bool = True,
+    hop_speeds: dict | None = None,
 ) -> dict:
     day_dir = Path(out_root) / parse_datdep(datdep).strftime("%Y%m%d")
     done = day_dir / "compare.csv"
@@ -262,7 +263,7 @@ def run_day(
     scenario = build_scenario(
         tracks=tracks, assigned=assigned, switches=switches,
         router=router, forbidden_df=forbidden_df, timetable=tt,
-        out_dir=day_dir, t0=0, speed=speed,
+        out_dir=day_dir, t0=0, speed=speed, hop_speeds=hop_speeds,
     )
     write_configs(day_dir, end=end)
 

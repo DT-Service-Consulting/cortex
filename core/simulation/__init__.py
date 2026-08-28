@@ -1,6 +1,8 @@
 from .ConstrainedRouter import ConstrainedRouter
 from .OrientedNetworkBuilder import OrientedNetworkBuilder
-from .build_hard import STATIONS, FALLBACK, build_scenario, hms
+from .build_hard import (
+    STATIONS, FALLBACK, build_scenario, hop_lengths_from_day, hop_speeds_from_compare, hms,
+)
 from .switches import rebuild_switches_from_tracks, ensure_switches_cover_tracks
 from .month import (
     build_timetable, date_range, read_passages, read_stop_events, run_day, run_period,
@@ -18,6 +20,8 @@ __all__ = [
     "STATIONS",
     "FALLBACK",
     "build_scenario",
+    "hop_lengths_from_day",
+    "hop_speeds_from_compare",
     "hms",
     "rebuild_switches_from_tracks",
     "ensure_switches_cover_tracks",
