@@ -13,6 +13,7 @@ from .causal_ground import (
     detect_edges, dwell_preview, example_graph, graph_table, jambe_spec, make_platform_map,
     random_graph, reference_timetable, score_edges,
 )
+from .ground_truth import GroundTruthGenerator
 
 __all__ = [
     "ConstrainedRouter",
@@ -48,4 +49,5 @@ __all__ = [
     "random_graph",
     "reference_timetable",
     "score_edges",
+    "GroundTruthGenerator",
 ]
