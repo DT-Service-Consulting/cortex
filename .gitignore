@@ -12,6 +12,7 @@ dist/
 research/*
 !research/__imports__.py
 
+data/*
 .DS_Store
 .env
 .vscode/
