@@ -24,4 +24,6 @@ research/*
 data/**
 !data/*.py
 !data/README.md
+!data/PREPROCESSING_FEBRUARY_2025.md
+!data/PREPROCESSING_FEBRUARY_2025.txt
 !data/2025_raw.csv
