@@ -6,6 +6,7 @@ from .build_hard import (
 from .switches import rebuild_switches_from_tracks, ensure_switches_cover_tracks
 from .month import (
     build_timetable, date_range, read_passages, read_stop_events, run_day, run_period,
+    run_sumo,
 )
 from .causal_ground import (
     CausalGraph, CausalTrain, CORRIDOR, NORMAL_DWELL, RUN_S,
@@ -13,7 +14,6 @@ from .causal_ground import (
     detect_edges, dwell_preview, example_graph, graph_table, jambe_spec, make_platform_map,
     random_graph, reference_timetable, score_edges,
 )
-from .ground_truth import GroundTruthGenerator
 
 __all__ = [
     "ConstrainedRouter",
@@ -30,6 +30,7 @@ __all__ = [
     "date_range",
     "read_passages",
     "read_stop_events",
+    "run_sumo",
     "run_day",
     "run_period",
     "CausalGraph",
@@ -49,5 +50,4 @@ __all__ = [
     "random_graph",
     "reference_timetable",
     "score_edges",
-    "GroundTruthGenerator",
 ]

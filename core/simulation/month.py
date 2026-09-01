@@ -117,6 +117,57 @@ def build_timetable(planning: pd.DataFrame, datdep: str, clock: str = "planned")
     return tt
 
 
+def _traci():
+    import traci
+    return traci
+
+
+def _hold_if_next_stop_busy(traci) -> None:
+    now = traci.simulation.getTime()
+    until = str(now + 1)
+    for veh in traci.vehicle.getIDList():
+        if not traci.vehicle.isAtBusStop(veh):
+            continue
+        stops = traci.vehicle.getStops(veh, 2)
+        if len(stops) < 2 or stops[0].arrival < 0:
+            continue
+        place = stops[1].stoppingPlaceID
+        if not place:
+            continue
+        occupying = [
+            other for other in traci.busstop.getVehicleIDs(place) if other != veh
+        ]
+        if not occupying:
+            lane = traci.busstop.getLaneID(place)
+            occupying = [
+                other for other in traci.lane.getLastStepVehicleIDs(lane) if other != veh
+            ]
+        if occupying:
+            traci.vehicle.setStopParameter(veh, 0, "until", until)
+
+
+def run_sumo(
+    day_dir: Path,
+    end: int = SIM_END,
+    hold_next_stop: bool = False,
+) -> subprocess.CompletedProcess:
+    cfg = str(Path(day_dir) / "ns.batch.sumocfg")
+    cmd = ["sumo", "-c", cfg]
+    if not hold_next_stop:
+        return subprocess.run(cmd, capture_output=True, text=True)
+    traci = _traci()
+    traci.start(cmd)
+    try:
+        while traci.simulation.getMinExpectedNumber() > 0:
+            if traci.simulation.getTime() >= end:
+                break
+            _hold_if_next_stop_busy(traci)
+            traci.simulationStep()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    finally:
+        traci.close()
+
+
 def write_configs(day_dir: Path, end: int = SIM_END) -> None:
     (day_dir / "ns.batch.sumocfg").write_text(dedent(f"""\
         <?xml version="1.0" encoding="UTF-8"?>
@@ -271,9 +322,7 @@ def run_day(
     if nc.returncode != 0:
         return {"datdep": datdep, "error": "netconvert", "log": nc.stderr[-800:]}
 
-    run = subprocess.run(
-        ["sumo", "-c", str(day_dir / "ns.batch.sumocfg")], capture_output=True, text=True
-    )
+    run = run_sumo(day_dir, end=end)
     if not (day_dir / "stop_events.xml").exists():
         return {"datdep": datdep, "error": "sumo", "log": (run.stderr or run.stdout)[-800:]}
 

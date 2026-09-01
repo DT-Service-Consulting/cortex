@@ -1,15 +1,17 @@
-"""Reusable excess-dwell and delay-chain analysis.
+"""Reusable delay-chain analysis.
 
 The implementation is a production refactor of the methodology in
-``Causality_Algorithm_Final.ipynb``. It keeps the notebook's definitions:
+``Causality_Algorithm_Final.ipynb``, with hop delay added:
 
 * station stay starts at the later of observed/simulated arrival and planned
   arrival;
-* excess dwell is station stay minus planned dwell;
-* calls with at least 30 seconds of excess dwell form consecutive platform
-  runs;
+* extra dwell is station stay minus planned dwell;
+* extra arrival is observed arrival minus previous observed departure minus
+  planned hop time (zero at the first stop of a trip);
+* delay is the sum of extra dwell and extra arrival, each clipped at zero;
+* calls with at least 30 seconds of delay form consecutive platform runs;
 * runs of three or more calls are split when the platform gap is outside
-  0--180 seconds or the adjacent excess-dwell change exceeds 180 seconds.
+  0--180 seconds or the adjacent delay change exceeds 180 seconds.
 
 Typical use::
 
@@ -471,11 +473,17 @@ class DelayChainPipeline:
             event_data["station_stay_seconds"]
             - event_data["planned_station_stay_seconds"]
         )
+        event_data["extra_dwell_seconds"] = event_data["station_stay_delay_seconds"]
+        event_data = self._attach_extra_arrival(event_data)
+        event_data["delay_seconds"] = (
+            event_data["extra_dwell_seconds"].clip(lower=0)
+            + event_data["extra_arrival_seconds"].clip(lower=0)
+        )
 
         ordered = event_data.sort_values(
             ["station_id", "platform", "chain"], kind="stable"
         ).reset_index(drop=True)
-        delay = ordered["station_stay_delay_seconds"]
+        delay = ordered["delay_seconds"]
         is_positive = delay.ge(
             self.config.positive_delay_threshold_seconds
         ) & delay.notna()
@@ -526,7 +534,7 @@ class DelayChainPipeline:
             + event_universe["platform"].astype(str)
         )
         event_universe["is_positive_delay"] = event_universe[
-            "station_stay_delay_seconds"
+            "delay_seconds"
         ].ge(self.config.positive_delay_threshold_seconds)
 
         multi_event_chains = chains.loc[
@@ -657,6 +665,27 @@ class DelayChainPipeline:
             propagation=propagation,
         )
 
+    @staticmethod
+    def _attach_extra_arrival(event_data: pd.DataFrame) -> pd.DataFrame:
+        work = event_data.copy()
+        work["_orig"] = range(len(work))
+        work = work.sort_values(["trip_id", "seq"], kind="stable")
+        grouped = work.groupby("trip_id", sort=False)
+        work["previous_trip_departure"] = grouped["departure"].shift()
+        work["previous_planned_departure"] = grouped["planned_departure"].shift()
+        work["parkour_seconds"] = (
+            work["planned_arrival"] - work["previous_planned_departure"]
+        ).dt.total_seconds()
+        work["extra_arrival_seconds"] = (
+            (work["arrival"] - work["previous_trip_departure"]).dt.total_seconds()
+            - work["parkour_seconds"]
+        ).fillna(0)
+        return (
+            work.sort_values("_orig", kind="stable")
+            .drop(columns="_orig")
+            .reset_index(drop=True)
+        )
+
     def _refine_chains(
         self, positive_events: pd.DataFrame, label: str
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -666,10 +695,10 @@ class DelayChainPipeline:
         ].map(original_sizes)
         groups = positive_events.groupby("_positive_run_id", sort=False)
         positive_events["previous_station_stay_delay_seconds"] = groups[
-            "station_stay_delay_seconds"
+            "delay_seconds"
         ].shift()
         positive_events["delay_change_seconds"] = (
-            positive_events["station_stay_delay_seconds"]
+            positive_events["delay_seconds"]
             - positive_events["previous_station_stay_delay_seconds"]
         )
         positive_events["absolute_delay_change_seconds"] = positive_events[
@@ -733,21 +762,21 @@ class DelayChainPipeline:
         chain_events["position_in_refined_chain"] = groups.cumcount() + 1
         chain_events["refined_chain_length"] = groups["trip_id"].transform("size")
         chain_events["originator_delay_seconds"] = groups[
-            "station_stay_delay_seconds"
+            "delay_seconds"
         ].transform("first")
         chain_events["previous_delay_in_refined_chain_seconds"] = groups[
-            "station_stay_delay_seconds"
+            "delay_seconds"
         ].shift()
         chain_events["change_from_previous_seconds"] = (
-            chain_events["station_stay_delay_seconds"]
+            chain_events["delay_seconds"]
             - chain_events["previous_delay_in_refined_chain_seconds"]
         )
         chain_events["change_from_originator_seconds"] = (
-            chain_events["station_stay_delay_seconds"]
+            chain_events["delay_seconds"]
             - chain_events["originator_delay_seconds"]
         )
         chain_events["fraction_of_originator_delay"] = (
-            chain_events["station_stay_delay_seconds"]
+            chain_events["delay_seconds"]
             / chain_events["originator_delay_seconds"]
         )
 
@@ -756,9 +785,9 @@ class DelayChainPipeline:
         last = groups.last()
         aggregate = groups.agg(
             refined_chain_length=("trip_id", "size"),
-            mean_chain_delay_seconds=("station_stay_delay_seconds", "mean"),
-            maximum_chain_delay_seconds=("station_stay_delay_seconds", "max"),
-            minimum_chain_delay_seconds=("station_stay_delay_seconds", "min"),
+            mean_chain_delay_seconds=("delay_seconds", "mean"),
+            maximum_chain_delay_seconds=("delay_seconds", "max"),
+            minimum_chain_delay_seconds=("delay_seconds", "min"),
             chain_start_timestamp=("event_timestamp", "min"),
             chain_end_timestamp=("event_timestamp", "max"),
         )
@@ -768,7 +797,7 @@ class DelayChainPipeline:
                 [
                     "refined_chain_id",
                     "position_in_refined_chain",
-                    "station_stay_delay_seconds",
+                    "delay_seconds",
                     "platform_gap_seconds",
                     "planned_station_stay_seconds",
                     "seq",
@@ -781,8 +810,8 @@ class DelayChainPipeline:
             f"{column}_{int(position)}" for column, position in first_two.columns
         ]
         for column in (
-            "station_stay_delay_seconds_1",
-            "station_stay_delay_seconds_2",
+            "delay_seconds_1",
+            "delay_seconds_2",
             "platform_gap_seconds_1",
             "platform_gap_seconds_2",
             "planned_station_stay_seconds_1",
@@ -808,12 +837,12 @@ class DelayChainPipeline:
                 last_trip_id=last["trip_id"],
                 originator_source_train_no=first["source_train_no"],
                 originator_start_reason=first["refinement_break_reason"],
-                last_delay_seconds=last["station_stay_delay_seconds"],
+                last_delay_seconds=last["delay_seconds"],
             )
             .rename(
                 columns={
-                    "station_stay_delay_seconds_1": "originator_delay_seconds",
-                    "station_stay_delay_seconds_2": "second_delay_seconds",
+                    "delay_seconds_1": "originator_delay_seconds",
+                    "delay_seconds_2": "second_delay_seconds",
                     "platform_gap_seconds_1": "originator_platform_gap_seconds",
                     "platform_gap_seconds_2": "second_platform_gap_seconds",
                     "planned_station_stay_seconds_1": (
@@ -1008,7 +1037,7 @@ class DelayChainPipeline:
             return pd.DataFrame(columns=columns)
         return (
             chain_events.groupby("position_in_refined_chain", observed=True)[
-                "station_stay_delay_seconds"
+                "delay_seconds"
             ]
             .agg(
                 event_count="size",

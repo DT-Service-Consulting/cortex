@@ -585,8 +585,14 @@ def build_scenario(
         for s in stops_meta:
             if int(s["dep"]) <= int(s["arr"]):
                 continue
-            until = max(int(s["dep"]), prev_until + 1, 0)
-            lines.append(f'        <stop busStop="{s["stop_id"]}" until="{until}"/>')
+            arr = max(0, int(s["arr"]))
+            dep = int(s["dep"])
+            until = max(dep, prev_until + 1, 0)
+            duration = max(1, dep - arr)
+            lines.append(
+                f'        <stop busStop="{s["stop_id"]}" arrival="{arr}" '
+                f'duration="{duration}" until="{until}"/>'
+            )
             prev_until = until
         lines.append("    </vehicle>")
     lines.append("</routes>")
