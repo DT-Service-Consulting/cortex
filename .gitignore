@@ -14,3 +14,14 @@ research/*
 
 .DS_Store
 .env
+
+# Office lock files
+~$*
+
+# data/ holds large local-only payloads (330 MB raw months, the junction and
+# upstream extracts). The preprocessing code and the docs are tracked; the data
+# it produces is not - regenerate with `python data/fetch_months.py`.
+data/**
+!data/*.py
+!data/README.md
+!data/2025_raw.csv
