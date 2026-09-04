@@ -1,3 +1,5 @@
+"""Generate synthetic causal-delay ground truth with SUMO."""
+
 from __future__ import annotations
 
 import json
